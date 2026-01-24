@@ -42,6 +42,17 @@
             font-size: 14px;
         }
 
+        .login-section {
+            text-align: center;
+            padding: 60px 20px;
+        }
+
+        .login-section p {
+            color: #666;
+            margin-bottom: 20px;
+            font-size: 16px;
+        }
+
         .btn {
             background: #667eea;
             color: white;
@@ -59,6 +70,41 @@
             background: #5568d3;
             transform: translateY(-2px);
             box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+        }
+
+        .btn-small {
+            padding: 8px 16px;
+            font-size: 14px;
+        }
+
+        .btn-github {
+            background: #24292e;
+        }
+
+        .btn-github:hover {
+            background: #1a1e22;
+        }
+
+        .logout-btn {
+            background: #e53e3e;
+            float: right;
+        }
+
+        .logout-btn:hover {
+            background: #c53030;
+        }
+
+        .header-row {
+            overflow: hidden;
+            margin-bottom: 30px;
+        }
+
+        .user-info {
+            color: #666;
+            font-size: 14px;
+            float: right;
+            margin-top: 8px;
+            margin-right: 10px;
         }
 
         .device-section {
@@ -208,7 +254,12 @@
 </head>
 <body>
     <div class="container">
-        <h1>Taildrop Web</h1>
+        {{if .Authenticated}}
+        <div class="header-row">
+            <h1>Taildrop Web</h1>
+            <span class="user-info">{{.Username}}</span>
+            <a href="/auth/logout" class="btn btn-small logout-btn">Logout</a>
+        </div>
         <p class="subtitle">Send files to devices on your Tailscale network</p>
 
         <div class="device-section">
@@ -387,6 +438,15 @@
             // Load devices on page load
             fetchDevices();
         </script>
+
+        {{else}}
+        <div class="login-section">
+            <h1>Taildrop Web</h1>
+            <p>Send files to devices on your Tailscale network via drag & drop</p>
+            <p style="margin-top: 30px;">Please sign in with GitHub to continue</p>
+            <a href="/auth/login" class="btn btn-github">Sign in with GitHub</a>
+        </div>
+        {{end}}
     </div>
 </body>
 </html>
