@@ -51,7 +51,7 @@ type Device struct {
 	Hostname  string   `json:"hostname"`
 	Addresses []string `json:"addresses"`
 	OS        string   `json:"os"`
-	Online    bool     `json:"online"`
+	LastSeen  string   `json:"lastSeen,omitempty"` // Only present when device is offline
 }
 
 type DeviceListResponse struct {
@@ -342,20 +342,39 @@ func handleDevices(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Read the response body for logging
+	bodyBytes, err := io.ReadAll(resp.Body)
+	if err != nil {
+		http.Error(w, "Failed to read response", http.StatusInternalServerError)
+		log.Printf("Response read error: %v", err)
+		return
+	}
+
+	// Log the raw API response for debugging
+	log.Printf("Tailscale API raw response: %s", string(bodyBytes))
+
 	var deviceList DeviceListResponse
-	if err := json.NewDecoder(resp.Body).Decode(&deviceList); err != nil {
+	if err := json.Unmarshal(bodyBytes, &deviceList); err != nil {
 		http.Error(w, "Failed to decode response", http.StatusInternalServerError)
 		log.Printf("JSON decode error: %v", err)
 		return
 	}
 
+	log.Printf("Total devices from API: %d", len(deviceList.Devices))
+
 	// Filter to only show online devices
+	// Note: lastSeen is only present when device is offline (not connected to control)
+	// If lastSeen is empty/absent, the device is currently online
 	onlineDevices := make([]Device, 0)
-	for _, device := range deviceList.Devices {
-		if device.Online {
+	for i, device := range deviceList.Devices {
+		isOnline := device.LastSeen == ""
+		log.Printf("Device %d: Name=%s, Hostname=%s, LastSeen=%s, Online=%v", i, device.Name, device.Hostname, device.LastSeen, isOnline)
+		if isOnline {
 			onlineDevices = append(onlineDevices, device)
 		}
 	}
+
+	log.Printf("Online devices after filtering: %d", len(onlineDevices))
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(onlineDevices)
