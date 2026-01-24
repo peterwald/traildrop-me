@@ -51,6 +51,7 @@ type Device struct {
 	Hostname  string   `json:"hostname"`
 	Addresses []string `json:"addresses"`
 	OS        string   `json:"os"`
+	Online    bool     `json:"online"`
 }
 
 type DeviceListResponse struct {
@@ -348,8 +349,16 @@ func handleDevices(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Filter to only show online devices
+	onlineDevices := make([]Device, 0)
+	for _, device := range deviceList.Devices {
+		if device.Online {
+			onlineDevices = append(onlineDevices, device)
+		}
+	}
+
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(deviceList.Devices)
+	json.NewEncoder(w).Encode(onlineDevices)
 }
 
 func handleUpload(w http.ResponseWriter, r *http.Request) {
