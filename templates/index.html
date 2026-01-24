@@ -104,7 +104,11 @@
             font-size: 14px;
             float: right;
             margin-top: 8px;
-            margin-right: 10px;
+            margin-right: 16px;
+            padding: 8px 12px;
+            background: #f7fafc;
+            border-radius: 6px;
+            border: 1px solid #e2e8f0;
         }
 
         .device-section {
@@ -250,6 +254,60 @@
             text-align: center;
             display: none;
         }
+
+        .progress-container {
+            margin-top: 20px;
+            display: none;
+        }
+
+        .progress-bar {
+            width: 100%;
+            height: 8px;
+            background: #e2e8f0;
+            border-radius: 4px;
+            overflow: hidden;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+            width: 0%;
+            transition: width 0.3s ease;
+        }
+
+        .progress-text {
+            text-align: center;
+            color: #4a5568;
+            font-size: 14px;
+            margin-top: 8px;
+        }
+
+        .footer {
+            margin-top: 30px;
+            padding-top: 20px;
+            border-top: 1px solid #e2e8f0;
+            text-align: center;
+        }
+
+        .footer-link {
+            color: #667eea;
+            text-decoration: none;
+            font-size: 14px;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            transition: color 0.2s ease;
+        }
+
+        .footer-link:hover {
+            color: #5568d3;
+            text-decoration: underline;
+        }
+
+        .github-icon {
+            width: 16px;
+            height: 16px;
+        }
     </style>
 </head>
 <body>
@@ -286,12 +344,28 @@
             <button class="btn" id="upload-btn">Send File</button>
         </div>
 
+        <div class="progress-container" id="progress-container">
+            <div class="progress-bar">
+                <div class="progress-fill" id="progress-fill"></div>
+            </div>
+            <div class="progress-text" id="progress-text">Uploading... 0%</div>
+        </div>
+
         <div class="loading" id="loading">
             <div class="spinner"></div>
             <p style="margin-top: 10px; color: #4a5568;">Sending file...</p>
         </div>
 
         <div class="status" id="status"></div>
+
+        <div class="footer">
+            <a href="https://github.com/peterwald/traildrop-me" target="_blank" class="footer-link">
+                <svg class="github-icon" viewBox="0 0 16 16" fill="currentColor">
+                    <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/>
+                </svg>
+                View on GitHub
+            </a>
+        </div>
 
         <script>
             let selectedFile = null;
@@ -314,8 +388,9 @@
                         select.innerHTML = '<option value="">-- Select a device --</option>';
                         devices.forEach(device => {
                             const option = document.createElement('option');
-                            option.value = device.hostname;
-                            // Use device name, and if it's an FQDN, take only the first segment
+                            // Use the full Tailscale name for the value (works with all devices)
+                            option.value = device.name;
+                            // Use device name, and if it's an FQDN, take only the first segment for display
                             const displayName = device.name.includes('.') ? device.name.split('.')[0] : device.name;
                             option.textContent = `${displayName} (${device.os}) - ${device.lastSeenAgo}`;
                             select.appendChild(option);
@@ -378,7 +453,7 @@
                 return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
             }
 
-            document.getElementById('upload-btn').addEventListener('click', async () => {
+            document.getElementById('upload-btn').addEventListener('click', () => {
                 const deviceSelect = document.getElementById('device-select');
                 const deviceName = deviceSelect.value;
 
@@ -396,34 +471,69 @@
                 formData.append('file', selectedFile);
                 formData.append('device', deviceName);
 
-                document.getElementById('loading').style.display = 'block';
+                // Show progress bar for files larger than 1MB
+                const showProgress = selectedFile.size > 1024 * 1024;
+
+                if (showProgress) {
+                    document.getElementById('progress-container').style.display = 'block';
+                } else {
+                    document.getElementById('loading').style.display = 'block';
+                }
                 document.getElementById('upload-btn-container').style.display = 'none';
                 hideStatus();
 
-                try {
-                    const response = await fetch('/upload', {
-                        method: 'POST',
-                        body: formData
-                    });
+                const xhr = new XMLHttpRequest();
 
-                    const result = await response.json();
+                // Track upload progress
+                xhr.upload.addEventListener('progress', (e) => {
+                    if (e.lengthComputable && showProgress) {
+                        const percentComplete = (e.loaded / e.total) * 100;
+                        document.getElementById('progress-fill').style.width = percentComplete + '%';
+                        document.getElementById('progress-text').textContent = `Uploading... ${Math.round(percentComplete)}%`;
+                    }
+                });
 
-                    if (response.ok) {
-                        showStatus(`File successfully sent to ${deviceName}!`, 'success');
-                        // Reset form
-                        selectedFile = null;
-                        fileInput.value = '';
-                        document.getElementById('selected-file').style.display = 'none';
+                xhr.addEventListener('load', () => {
+                    document.getElementById('progress-container').style.display = 'none';
+                    document.getElementById('loading').style.display = 'none';
+
+                    if (xhr.status === 200) {
+                        try {
+                            const result = JSON.parse(xhr.responseText);
+                            showStatus(`File successfully sent to ${deviceName}!`, 'success');
+                            // Reset form
+                            selectedFile = null;
+                            fileInput.value = '';
+                            document.getElementById('selected-file').style.display = 'none';
+                            // Reset progress bar
+                            document.getElementById('progress-fill').style.width = '0%';
+                            document.getElementById('progress-text').textContent = 'Uploading... 0%';
+                        } catch (e) {
+                            showStatus('File sent successfully!', 'success');
+                            selectedFile = null;
+                            fileInput.value = '';
+                            document.getElementById('selected-file').style.display = 'none';
+                        }
                     } else {
-                        showStatus('Failed to send file: ' + (result.message || 'Unknown error'), 'error');
+                        try {
+                            const result = JSON.parse(xhr.responseText);
+                            showStatus('Failed to send file: ' + (result.message || 'Unknown error'), 'error');
+                        } catch (e) {
+                            showStatus('Failed to send file: ' + xhr.statusText, 'error');
+                        }
                         document.getElementById('upload-btn-container').style.display = 'block';
                     }
-                } catch (error) {
-                    showStatus('Error sending file: ' + error.message, 'error');
-                    document.getElementById('upload-btn-container').style.display = 'block';
-                } finally {
+                });
+
+                xhr.addEventListener('error', () => {
+                    document.getElementById('progress-container').style.display = 'none';
                     document.getElementById('loading').style.display = 'none';
-                }
+                    showStatus('Error sending file: Network error', 'error');
+                    document.getElementById('upload-btn-container').style.display = 'block';
+                });
+
+                xhr.open('POST', '/upload');
+                xhr.send(formData);
             });
 
             function showStatus(message, type) {
@@ -447,6 +557,15 @@
             <p>Send files to devices on your Tailscale network via drag & drop</p>
             <p style="margin-top: 30px;">Please sign in with GitHub to continue</p>
             <a href="/auth/login" class="btn btn-github">Sign in with GitHub</a>
+        </div>
+
+        <div class="footer">
+            <a href="https://github.com/peterwald/traildrop-me" target="_blank" class="footer-link">
+                <svg class="github-icon" viewBox="0 0 16 16" fill="currentColor">
+                    <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/>
+                </svg>
+                View on GitHub
+            </a>
         </div>
         {{end}}
     </div>
