@@ -6,7 +6,7 @@ A web application for sending files to devices on your Tailscale network via dra
 
 - **GitHub OAuth Authentication**: Secure login using GitHub accounts
 - **Drag & Drop Upload**: Simple, intuitive file transfer interface
-- **Device Discovery**: Automatically lists all online devices on your tailnet
+- **Device Discovery**: Automatically lists all devices on your tailnet with last seen status
 - **Secure File Transfer**: Uses Tailscale's built-in file copy functionality
 - **OAuth API Access**: Uses Tailscale OAuth client credentials for API calls
 - **Responsive Design**: Works on desktop and mobile devices
@@ -249,13 +249,13 @@ Visit `http://localhost:8080` in your browser and sign in with GitHub.
 ## Usage
 
 1. **Sign In**: Click "Sign in with GitHub" to authenticate
-2. **Select Device**: Choose a target device from the dropdown menu (only online devices are shown)
+2. **Select Device**: Choose a target device from the dropdown menu (each device shows when it was last seen)
 3. **Upload File**: Drag and drop a file onto the upload zone (or click to browse)
 4. **Send**: Click "Send File" to transfer the file to the selected device
 
 The recipient device will receive a notification about the incoming file, which they can accept through their Tailscale client.
 
-**Note**: Only devices that are currently online on your Tailscale network will appear in the device list.
+**Note**: Devices show their last seen status (e.g., "now", "5 minutes ago", "2 hours ago"). Choose devices that were recently seen for the best chance of successful delivery.
 
 ## Architecture
 
@@ -288,9 +288,10 @@ The recipient device will receive a notification about the incoming file, which 
 
 ### No devices showing in the list
 
-- Only **online** devices are displayed in the dropdown
-- Check that your target devices are connected to Tailscale: run `tailscale status` on those devices
-- Verify devices are part of the same tailnet
+- Verify `TAILSCALE_CLIENT_ID`, `TAILSCALE_CLIENT_SECRET`, and `TAILNET_NAME` are correct
+- Check that the OAuth client has `devices:read` scope in Tailscale admin console
+- Ensure devices are part of the same tailnet
+- Check logs: `flyctl logs`
 - Refresh the page to reload the device list
 
 ### "Failed to send file"

@@ -51,7 +51,12 @@ type Device struct {
 	Hostname  string   `json:"hostname"`
 	Addresses []string `json:"addresses"`
 	OS        string   `json:"os"`
-	LastSeen  string   `json:"lastSeen,omitempty"` // Only present when device is offline
+	LastSeen  string   `json:"lastSeen,omitempty"`
+}
+
+type DeviceWithStatus struct {
+	Device
+	LastSeenAgo string `json:"lastSeenAgo"` // Human-readable time since last seen
 }
 
 type DeviceListResponse struct {
@@ -323,6 +328,44 @@ func handleLogout(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/", http.StatusSeeOther)
 }
 
+func formatLastSeen(lastSeen string) string {
+	if lastSeen == "" {
+		return "now"
+	}
+
+	// Parse the ISO 8601 timestamp
+	t, err := time.Parse(time.RFC3339, lastSeen)
+	if err != nil {
+		log.Printf("Error parsing lastSeen timestamp %s: %v", lastSeen, err)
+		return "unknown"
+	}
+
+	duration := time.Since(t)
+
+	// Format as human-readable duration
+	if duration < time.Minute {
+		return "just now"
+	} else if duration < time.Hour {
+		minutes := int(duration.Minutes())
+		if minutes == 1 {
+			return "1 minute ago"
+		}
+		return fmt.Sprintf("%d minutes ago", minutes)
+	} else if duration < 24*time.Hour {
+		hours := int(duration.Hours())
+		if hours == 1 {
+			return "1 hour ago"
+		}
+		return fmt.Sprintf("%d hours ago", hours)
+	} else {
+		days := int(duration.Hours() / 24)
+		if days == 1 {
+			return "1 day ago"
+		}
+		return fmt.Sprintf("%d days ago", days)
+	}
+}
+
 func handleDevices(w http.ResponseWriter, r *http.Request) {
 	// Fetch devices from Tailscale API using OAuth token
 	url := fmt.Sprintf("https://api.tailscale.com/api/v2/tailnet/%s/devices", tailnetName)
@@ -362,22 +405,20 @@ func handleDevices(w http.ResponseWriter, r *http.Request) {
 
 	log.Printf("Total devices from API: %d", len(deviceList.Devices))
 
-	// Filter to only show online devices
-	// Note: lastSeen is only present when device is offline (not connected to control)
-	// If lastSeen is empty/absent, the device is currently online
-	onlineDevices := make([]Device, 0)
+	// Add "last seen ago" information to each device
+	devicesWithStatus := make([]DeviceWithStatus, 0, len(deviceList.Devices))
 	for i, device := range deviceList.Devices {
-		isOnline := device.LastSeen == ""
-		log.Printf("Device %d: Name=%s, Hostname=%s, LastSeen=%s, Online=%v", i, device.Name, device.Hostname, device.LastSeen, isOnline)
-		if isOnline {
-			onlineDevices = append(onlineDevices, device)
-		}
+		lastSeenAgo := formatLastSeen(device.LastSeen)
+		log.Printf("Device %d: Name=%s, Hostname=%s, LastSeen=%s, Ago=%s", i, device.Name, device.Hostname, device.LastSeen, lastSeenAgo)
+
+		devicesWithStatus = append(devicesWithStatus, DeviceWithStatus{
+			Device:      device,
+			LastSeenAgo: lastSeenAgo,
+		})
 	}
 
-	log.Printf("Online devices after filtering: %d", len(onlineDevices))
-
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(onlineDevices)
+	json.NewEncoder(w).Encode(devicesWithStatus)
 }
 
 func handleUpload(w http.ResponseWriter, r *http.Request) {

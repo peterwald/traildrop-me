@@ -315,7 +315,9 @@
                         devices.forEach(device => {
                             const option = document.createElement('option');
                             option.value = device.hostname;
-                            option.textContent = `${device.hostname} (${device.os})`;
+                            // Use device name, and if it's an FQDN, take only the first segment
+                            const displayName = device.name.includes('.') ? device.name.split('.')[0] : device.name;
+                            option.textContent = `${displayName} (${device.os}) - ${device.lastSeenAgo}`;
                             select.appendChild(option);
                         });
                     }
