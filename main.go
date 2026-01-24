@@ -479,7 +479,7 @@ func main() {
 
 	// Start server
 	addr := ":" + port
-	log.Printf("Starting Taildrop web server on %s", addr)
+	log.Printf("Starting taildrop.me server on %s", addr)
 	log.Printf("Application URL: %s", appURL)
 	log.Printf("Tailnet: %s", tailnetName)
 	log.Println("GitHub OAuth authentication enabled")

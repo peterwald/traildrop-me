@@ -35,5 +35,5 @@ fi
 echo "Tailscale status:"
 tailscale status
 
-echo "Starting Taildrop web application..."
+echo "Starting taildrop.me application..."
 exec ./taildrop-me

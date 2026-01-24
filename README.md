@@ -1,4 +1,4 @@
-# Taildrop Web
+# taildrop.me
 
 A web application for sending files to devices on your Tailscale network via drag-and-drop. Built with Go and deployed to Fly.io.
 
