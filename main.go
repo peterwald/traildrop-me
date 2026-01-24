@@ -2,8 +2,6 @@ package main
 
 import (
 	"context"
-	"crypto/rand"
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"html/template"
@@ -14,31 +12,20 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
-	"sync"
-	"time"
 
-	"golang.org/x/oauth2"
+	"golang.org/x/oauth2/clientcredentials"
 )
 
 var (
-	oauth2Config *oauth2.Config
-	sessions     = make(map[string]*Session)
-	sessionMu    sync.RWMutex
+	oauth2Client *http.Client
 	templates    *template.Template
 
 	// Environment variables
 	tailscaleClientID     string
 	tailscaleClientSecret string
-	tailscaleAPIKey       string
 	tailnetName           string
-	redirectURL           string
 	port                  string
 )
-
-type Session struct {
-	Token     *oauth2.Token
-	CreatedAt time.Time
-}
 
 type Device struct {
 	Name      string   `json:"name"`
@@ -55,22 +42,19 @@ func init() {
 	// Load environment variables
 	tailscaleClientID = getEnv("TAILSCALE_CLIENT_ID", "")
 	tailscaleClientSecret = getEnv("TAILSCALE_CLIENT_SECRET", "")
-	tailscaleAPIKey = getEnv("TAILSCALE_API_KEY", "")
 	tailnetName = getEnv("TAILNET_NAME", "")
-	redirectURL = getEnv("REDIRECT_URL", "http://localhost:8080/callback")
 	port = getEnv("PORT", "8080")
 
-	// Configure OAuth2
-	oauth2Config = &oauth2.Config{
+	// Configure OAuth2 client credentials
+	config := &clientcredentials.Config{
 		ClientID:     tailscaleClientID,
 		ClientSecret: tailscaleClientSecret,
-		RedirectURL:  redirectURL,
-		Scopes:       []string{"devices:read"},
-		Endpoint: oauth2.Endpoint{
-			AuthURL:  "https://login.tailscale.com/api/v2/oauth/authorize",
-			TokenURL: "https://login.tailscale.com/api/v2/oauth/token",
-		},
+		TokenURL:     "https://api.tailscale.com/api/v2/oauth/token",
+		Scopes:       []string{}, // Scopes are configured in the OAuth client in Tailscale admin
 	}
+
+	// Create HTTP client that automatically handles token refresh
+	oauth2Client = config.Client(context.Background())
 
 	// Load templates
 	var err error
@@ -78,9 +62,6 @@ func init() {
 	if err != nil {
 		log.Fatalf("Failed to load templates: %v", err)
 	}
-
-	// Start session cleanup goroutine
-	go cleanupSessions()
 }
 
 func getEnv(key, defaultValue string) string {
@@ -90,178 +71,18 @@ func getEnv(key, defaultValue string) string {
 	return defaultValue
 }
 
-func cleanupSessions() {
-	ticker := time.NewTicker(1 * time.Hour)
-	defer ticker.Stop()
-
-	for range ticker.C {
-		sessionMu.Lock()
-		now := time.Now()
-		for id, session := range sessions {
-			if now.Sub(session.CreatedAt) > 24*time.Hour {
-				delete(sessions, id)
-			}
-		}
-		sessionMu.Unlock()
-	}
-}
-
-func generateSessionID() (string, error) {
-	b := make([]byte, 32)
-	if _, err := rand.Read(b); err != nil {
-		return "", err
-	}
-	return base64.URLEncoding.EncodeToString(b), nil
-}
-
-func getSession(r *http.Request) *Session {
-	cookie, err := r.Cookie("session_id")
-	if err != nil {
-		return nil
-	}
-
-	sessionMu.RLock()
-	defer sessionMu.RUnlock()
-	return sessions[cookie.Value]
-}
-
-func setSession(w http.ResponseWriter, sessionID string, session *Session) {
-	sessionMu.Lock()
-	sessions[sessionID] = session
-	sessionMu.Unlock()
-
-	http.SetCookie(w, &http.Cookie{
-		Name:     "session_id",
-		Value:    sessionID,
-		Path:     "/",
-		HttpOnly: true,
-		Secure:   true,
-		SameSite: http.SameSiteLaxMode,
-		MaxAge:   86400, // 24 hours
-	})
-}
-
 func handleIndex(w http.ResponseWriter, r *http.Request) {
-	session := getSession(r)
-	authenticated := session != nil
-
-	data := struct {
-		Authenticated bool
-	}{
-		Authenticated: authenticated,
-	}
-
-	if err := templates.ExecuteTemplate(w, "index.html", data); err != nil {
+	if err := templates.ExecuteTemplate(w, "index.html", nil); err != nil {
 		http.Error(w, "Failed to render template", http.StatusInternalServerError)
 		log.Printf("Template error: %v", err)
 	}
 }
 
-func handleLogin(w http.ResponseWriter, r *http.Request) {
-	state, err := generateSessionID()
-	if err != nil {
-		http.Error(w, "Failed to generate state", http.StatusInternalServerError)
-		return
-	}
-
-	// Store state in a temporary session for verification
-	http.SetCookie(w, &http.Cookie{
-		Name:     "oauth_state",
-		Value:    state,
-		Path:     "/",
-		HttpOnly: true,
-		Secure:   true,
-		SameSite: http.SameSiteLaxMode,
-		MaxAge:   600, // 10 minutes
-	})
-
-	url := oauth2Config.AuthCodeURL(state)
-	http.Redirect(w, r, url, http.StatusTemporaryRedirect)
-}
-
-func handleCallback(w http.ResponseWriter, r *http.Request) {
-	// Verify state
-	stateCookie, err := r.Cookie("oauth_state")
-	if err != nil {
-		http.Error(w, "Missing state cookie", http.StatusBadRequest)
-		return
-	}
-
-	if r.URL.Query().Get("state") != stateCookie.Value {
-		http.Error(w, "Invalid state parameter", http.StatusBadRequest)
-		return
-	}
-
-	// Clear state cookie
-	http.SetCookie(w, &http.Cookie{
-		Name:   "oauth_state",
-		Value:  "",
-		Path:   "/",
-		MaxAge: -1,
-	})
-
-	// Exchange code for token
-	code := r.URL.Query().Get("code")
-	token, err := oauth2Config.Exchange(context.Background(), code)
-	if err != nil {
-		http.Error(w, "Failed to exchange token", http.StatusInternalServerError)
-		log.Printf("Token exchange error: %v", err)
-		return
-	}
-
-	// Create session
-	sessionID, err := generateSessionID()
-	if err != nil {
-		http.Error(w, "Failed to create session", http.StatusInternalServerError)
-		return
-	}
-
-	setSession(w, sessionID, &Session{
-		Token:     token,
-		CreatedAt: time.Now(),
-	})
-
-	http.Redirect(w, r, "/", http.StatusSeeOther)
-}
-
-func handleLogout(w http.ResponseWriter, r *http.Request) {
-	cookie, err := r.Cookie("session_id")
-	if err == nil {
-		sessionMu.Lock()
-		delete(sessions, cookie.Value)
-		sessionMu.Unlock()
-	}
-
-	http.SetCookie(w, &http.Cookie{
-		Name:   "session_id",
-		Value:  "",
-		Path:   "/",
-		MaxAge: -1,
-	})
-
-	http.Redirect(w, r, "/", http.StatusSeeOther)
-}
-
 func handleDevices(w http.ResponseWriter, r *http.Request) {
-	session := getSession(r)
-	if session == nil {
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
-		return
-	}
-
-	// Fetch devices from Tailscale API
+	// Fetch devices from Tailscale API using OAuth token
 	url := fmt.Sprintf("https://api.tailscale.com/api/v2/tailnet/%s/devices", tailnetName)
-	req, err := http.NewRequest("GET", url, nil)
-	if err != nil {
-		http.Error(w, "Failed to create request", http.StatusInternalServerError)
-		log.Printf("Request creation error: %v", err)
-		return
-	}
 
-	req.SetBasicAuth(tailscaleAPIKey, "")
-
-	client := &http.Client{Timeout: 10 * time.Second}
-	resp, err := client.Do(req)
+	resp, err := oauth2Client.Get(url)
 	if err != nil {
 		http.Error(w, "Failed to fetch devices", http.StatusInternalServerError)
 		log.Printf("Device fetch error: %v", err)
@@ -288,12 +109,6 @@ func handleDevices(w http.ResponseWriter, r *http.Request) {
 }
 
 func handleUpload(w http.ResponseWriter, r *http.Request) {
-	session := getSession(r)
-	if session == nil {
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
-		return
-	}
-
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -315,6 +130,10 @@ func handleUpload(w http.ResponseWriter, r *http.Request) {
 
 	// Sanitize device name (allow only alphanumeric, dash, underscore, and dot)
 	deviceName = sanitizeDeviceName(deviceName)
+	if deviceName == "" {
+		http.Error(w, "Invalid device name", http.StatusBadRequest)
+		return
+	}
 
 	// Get uploaded file
 	file, handler, err := r.FormFile("file")
@@ -377,36 +196,22 @@ func sanitizeDeviceName(name string) string {
 	return result.String()
 }
 
-func requireAuth(next http.HandlerFunc) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		session := getSession(r)
-		if session == nil {
-			http.Error(w, "Unauthorized", http.StatusUnauthorized)
-			return
-		}
-		next(w, r)
-	}
-}
-
 func main() {
 	// Validate required environment variables
-	if tailscaleClientID == "" || tailscaleClientSecret == "" || tailscaleAPIKey == "" || tailnetName == "" {
-		log.Fatal("Missing required environment variables. Please set TAILSCALE_CLIENT_ID, TAILSCALE_CLIENT_SECRET, TAILSCALE_API_KEY, and TAILNET_NAME")
+	if tailscaleClientID == "" || tailscaleClientSecret == "" || tailnetName == "" {
+		log.Fatal("Missing required environment variables. Please set TAILSCALE_CLIENT_ID, TAILSCALE_CLIENT_SECRET, and TAILNET_NAME")
 	}
 
 	// Routes
 	http.HandleFunc("/", handleIndex)
-	http.HandleFunc("/login", handleLogin)
-	http.HandleFunc("/callback", handleCallback)
-	http.HandleFunc("/logout", handleLogout)
-	http.HandleFunc("/devices", requireAuth(handleDevices))
-	http.HandleFunc("/upload", requireAuth(handleUpload))
+	http.HandleFunc("/devices", handleDevices)
+	http.HandleFunc("/upload", handleUpload)
 
 	// Start server
 	addr := ":" + port
 	log.Printf("Starting Taildrop web server on %s", addr)
-	log.Printf("Redirect URL: %s", redirectURL)
 	log.Printf("Tailnet: %s", tailnetName)
+	log.Println("Note: This app is accessible to anyone who can reach it on your network")
 
 	if err := http.ListenAndServe(addr, nil); err != nil {
 		log.Fatalf("Server failed to start: %v", err)
