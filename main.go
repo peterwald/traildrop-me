@@ -209,6 +209,12 @@ func handleIndex(w http.ResponseWriter, r *http.Request) {
 		data.Username = session.Username
 	}
 
+	// Set security headers
+	w.Header().Set("Content-Security-Policy", "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'")
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	w.Header().Set("X-Frame-Options", "DENY")
+	w.Header().Set("Referrer-Policy", "strict-origin-when-cross-origin")
+
 	if err := templates.ExecuteTemplate(w, "index.html", data); err != nil {
 		http.Error(w, "Failed to render template", http.StatusInternalServerError)
 		log.Printf("Template error: %v", err)
