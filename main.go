@@ -92,7 +92,7 @@ func init() {
 		}
 		log.Printf("Loaded %d allowed GitHub users", len(allowedUsers))
 	} else {
-		log.Println("WARNING: No ALLOWED_GITHUB_USERS set - all GitHub users can access this app!")
+		log.Println("WARNING: No ALLOWED_GITHUB_USERS set - no users will be able to login!")
 	}
 
 	// Configure Tailscale OAuth2 client credentials
@@ -185,9 +185,9 @@ func setSession(w http.ResponseWriter, sessionID string, session *Session) {
 }
 
 func isUserAuthorized(username string) bool {
-	// If no users are configured, allow all (with warning logged in init)
+	// If no users are configured, deny all logins
 	if len(allowedUsers) == 0 {
-		return true
+		return false
 	}
 	// Check if user is in the allowed list (case-insensitive)
 	return allowedUsers[strings.ToLower(username)]

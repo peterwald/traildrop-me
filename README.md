@@ -1,6 +1,6 @@
 # taildrop.me
 
-A web application for sending files to devices on your Tailscale network via drag-and-drop. Built with Go and deployed to Fly.io.
+A tiny web application for sending files to devices on your Tailscale network via drag-and-drop. Built with Go and deployed to Fly.io.
 
 ## Features
 
@@ -17,19 +17,17 @@ A web application for sending files to devices on your Tailscale network via dra
 - A [GitHub](https://github.com/) account
 - [Fly.io](https://fly.io/) account (free tier available)
 - [flyctl](https://fly.io/docs/hands-on/install-flyctl/) CLI installed
-- Go 1.22+ (for local development)
+- Go 1.25+ (for local development)
 
 ## Setup
 
 ### 1. Tailscale OAuth Client
 
 1. Go to the [Tailscale Admin Console](https://login.tailscale.com/admin/settings/trust-credentials)
-2. Click **"+ Credential"**
-3. Set the following:
-   - **Name**: `taildrop.me`
-   - **Read**: Check `devices`
-   - **Write**: (none needed)
-4. Click **"Generate credential"**
+1. Click **"+ Credential"**
+1. Select OAuth
+1. On the scopes page, only `devices:core:read` is necessary.
+1. Click **"Generate credential"**
 5. **IMPORTANT**: Copy both the **Client ID** and **Client Secret** immediately - you won't be able to see the secret again!
 
 ### 2. Tailscale Auth Key
@@ -37,7 +35,6 @@ A web application for sending files to devices on your Tailscale network via dra
 1. Go to [Tailscale Auth Keys](https://login.tailscale.com/admin/settings/keys)
 2. Click **"Generate auth key"**
 3. Set the following:
-   - **Description**: `Taildrop Web Fly.io`
    - **Reusable**: ✓ (checked)
    - **Ephemeral**: ✓ (checked, recommended for Fly.io deployments)
    - **Expiration**: Choose appropriate duration
@@ -49,8 +46,8 @@ A web application for sending files to devices on your Tailscale network via dra
 2. Click **"New OAuth App"**
 3. Fill in the details:
    - **Application name**: `Taildrop Web`
-   - **Homepage URL**: `https://taildrop.me` (or your actual URL)
-   - **Authorization callback URL**: `https://taildrop.me/auth/callback` (or your actual URL + `/auth/callback`)
+   - **Homepage URL**: `https://taildrop.me` (use your actual deployed URL)
+   - **Authorization callback URL**: `https://taildrop.me/auth/callback` (use your actual URL + `/auth/callback`)
      - For local development: `http://localhost:8080/auth/callback`
 4. Click **"Register application"**
 5. On the app page, click **"Generate a new client secret"**
@@ -58,7 +55,7 @@ A web application for sending files to devices on your Tailscale network via dra
 
 ### 4. Configure Authorized Users
 
-**IMPORTANT**: By default, if you don't set `ALLOWED_GITHUB_USERS`, **any GitHub user** can access your app. You should configure a whitelist of allowed users.
+**IMPORTANT**: You must set `ALLOWED_GITHUB_USERS` to allow login. If this is not configured, **no users will be able to login**.
 
 Create a comma-separated list of GitHub usernames that should have access:
 ```
@@ -170,11 +167,11 @@ Or access it via your custom domain (see below for custom domain setup).
 | `TAILNET_NAME` | Your tailnet name (email or org domain) | Yes | `user@example.com` |
 | `GITHUB_CLIENT_ID` | GitHub OAuth app client ID | Yes | `Iv1.abc123...` |
 | `GITHUB_CLIENT_SECRET` | GitHub OAuth app client secret | Yes | `ghp_abc123...` |
-| `ALLOWED_GITHUB_USERS` | Comma-separated list of GitHub usernames | **Recommended** | `user1,user2,user3` |
+| `ALLOWED_GITHUB_USERS` | Comma-separated list of GitHub usernames | Yes | `user1,user2,user3` |
 | `APP_URL` | Full URL where app is hosted | Yes | `https://taildrop-me.fly.dev` |
 | `PORT` | Server port | No (default: 8080) | `8080` |
 
-**Note**: If `ALLOWED_GITHUB_USERS` is not set, any GitHub user can access the app (not recommended for production).
+**Note**: If `ALLOWED_GITHUB_USERS` is not set, no users will be able to login.
 
 ## Custom Domain Setup
 
@@ -339,6 +336,7 @@ The recipient device will receive a notification about the incoming file, which 
 ├── start.sh             # Startup script for Tailscale + app
 ├── fly.toml             # Fly.io configuration
 ├── .gitignore           # Git ignore rules
+├── LICENSE              # MIT License
 └── README.md            # This file
 ```
 
@@ -360,7 +358,7 @@ The recipient device will receive a notification about the incoming file, which 
 
 ## License
 
-MIT
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
 ## Contributing
 
