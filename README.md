@@ -17,7 +17,7 @@ A tiny web application for sending files to devices on your Tailscale network vi
 - A [GitHub](https://github.com/) account
 - [Fly.io](https://fly.io/) account (free tier available)
 - [flyctl](https://fly.io/docs/hands-on/install-flyctl/) CLI installed
-- Go 1.25+ (for local development)
+- Go 1.26+ (for local development)
 
 ## Setup
 
