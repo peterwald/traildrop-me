@@ -83,8 +83,8 @@ func init() {
 	// Parse allowed users into a map for fast lookup
 	allowedUsers = make(map[string]bool)
 	if allowedGitHubUsers != "" {
-		users := strings.Split(allowedGitHubUsers, ",")
-		for _, user := range users {
+		users := strings.SplitSeq(allowedGitHubUsers, ",")
+		for user := range users {
 			trimmed := strings.TrimSpace(user)
 			if trimmed != "" {
 				allowedUsers[strings.ToLower(trimmed)] = true
